@@ -2,7 +2,10 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+
 import connectDB from "./config/db.js";
+import aiRoutes from "./routes/ai.routes.js";
+import interviewRoutes from "./routes/interview.routes.js";
 
 dotenv.config();
 
@@ -24,6 +27,10 @@ app.get("/health", (_req, res) => {
     service: "InterviewGPT Node API",
   });
 });
+
+// Register API routes
+app.use("/api/interviews", interviewRoutes);
+app.use("/api/ai", aiRoutes);
 
 const PORT = process.env.PORT || 5000;
 

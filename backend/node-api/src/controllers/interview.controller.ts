@@ -1,9 +1,12 @@
-
 import type { Request, Response, NextFunction } from "express";
 import mongoose from "mongoose";
 
 import Interview from "../models/Interview.js";
-
+import {
+  generateQuestion,
+  evaluateAnswer,
+  generateInterviewReport,
+} from "../services/ai.service.js";
 import {
   createInterviewSchema,
   updateStatusSchema,
@@ -11,18 +14,11 @@ import {
   saveAnswerSchema,
 } from "../validators/interview.validator.js";
 
-import {
-  generateQuestion,
-  evaluateAnswer,
-} from "../services/ai.service.js";
-
 // --------------------------------------------------
 // Helper: Validate route parameters
 // --------------------------------------------------
 
-function getParamId(
-  value: string | string[] | undefined
-): string | null {
+function getParamId(value: string | string[] | undefined): string | null {
   if (typeof value !== "string") {
     return null;
   }
@@ -127,17 +123,13 @@ export async function getInterviewById(
     const interviewId = getParamId(req.params.id);
 
     if (!interviewId) {
-      return res.status(400).json({
-        message: "Invalid interview ID",
-      });
+      return res.status(400).json({ message: "Invalid interview ID" });
     }
 
     const interview = await Interview.findById(interviewId);
 
     if (!interview) {
-      return res.status(404).json({
-        message: "Interview not found",
-      });
+      return res.status(404).json({ message: "Interview not found" });
     }
 
     return res.status(200).json({ interview });
@@ -160,9 +152,7 @@ export async function updateInterviewStatus(
     const interviewId = getParamId(req.params.id);
 
     if (!interviewId) {
-      return res.status(400).json({
-        message: "Invalid interview ID",
-      });
+      return res.status(400).json({ message: "Invalid interview ID" });
     }
 
     const parsed = updateStatusSchema.safeParse(req.body);
@@ -177,9 +167,7 @@ export async function updateInterviewStatus(
     const interview = await Interview.findById(interviewId);
 
     if (!interview) {
-      return res.status(404).json({
-        message: "Interview not found",
-      });
+      return res.status(404).json({ message: "Interview not found" });
     }
 
     if (isInterviewClosed(interview.status)) {
@@ -223,9 +211,7 @@ export async function generateInterviewQuestion(
     const interviewId = getParamId(req.params.id);
 
     if (!interviewId) {
-      return res.status(400).json({
-        message: "Invalid interview ID",
-      });
+      return res.status(400).json({ message: "Invalid interview ID" });
     }
 
     const parsed = generateQuestionSchema.safeParse(req.body);
@@ -240,9 +226,7 @@ export async function generateInterviewQuestion(
     const interview = await Interview.findById(interviewId);
 
     if (!interview) {
-      return res.status(404).json({
-        message: "Interview not found",
-      });
+      return res.status(404).json({ message: "Interview not found" });
     }
 
     if (isInterviewClosed(interview.status)) {
@@ -251,19 +235,16 @@ export async function generateInterviewQuestion(
       });
     }
 
-    const result = await generateQuestion({
+    // Cast so both possible response keys type-check.
+    const result = (await generateQuestion({
       role: interview.role,
       experienceLevel: interview.experienceLevel,
       topic: parsed.data.topic,
-    });
+    })) as unknown as Record<string, unknown>;
 
-    const questionText =
-      result.question ?? result.generated_question;
+    const questionText = result.question ?? result.generated_question;
 
-    if (
-      typeof questionText !== "string" ||
-      !questionText.trim()
-    ) {
+    if (typeof questionText !== "string" || !questionText.trim()) {
       return res.status(502).json({
         message: "AI service returned an invalid question",
       });
@@ -279,8 +260,7 @@ export async function generateInterviewQuestion(
 
     await interview.save();
 
-    const savedQuestion =
-      interview.questions[interview.questions.length - 1];
+    const savedQuestion = interview.questions[interview.questions.length - 1];
 
     return res.status(201).json({
       message: "Question generated successfully",
@@ -324,9 +304,7 @@ export async function saveInterviewAnswer(
     const interview = await Interview.findById(interviewId);
 
     if (!interview) {
-      return res.status(404).json({
-        message: "Interview not found",
-      });
+      return res.status(404).json({ message: "Interview not found" });
     }
 
     if (isInterviewClosed(interview.status)) {
@@ -338,9 +316,7 @@ export async function saveInterviewAnswer(
     const question = interview.questions.id(questionId);
 
     if (!question) {
-      return res.status(404).json({
-        message: "Question not found",
-      });
+      return res.status(404).json({ message: "Question not found" });
     }
 
     question.answer = parsed.data.answer;
@@ -383,9 +359,7 @@ export async function evaluateInterviewAnswer(
     const interview = await Interview.findById(interviewId);
 
     if (!interview) {
-      return res.status(404).json({
-        message: "Interview not found",
-      });
+      return res.status(404).json({ message: "Interview not found" });
     }
 
     if (isInterviewClosed(interview.status)) {
@@ -397,9 +371,7 @@ export async function evaluateInterviewAnswer(
     const question = interview.questions.id(questionId);
 
     if (!question) {
-      return res.status(404).json({
-        message: "Question not found",
-      });
+      return res.status(404).json({ message: "Question not found" });
     }
 
     if (!question.answer.trim()) {
@@ -408,89 +380,61 @@ export async function evaluateInterviewAnswer(
       });
     }
 
-    const result = await evaluateAnswer({
+    // Send the question and candidate's answer to Gemini.
+    const result = (await evaluateAnswer({
       question: question.questionText,
       answer: question.answer,
       role: interview.role,
       experienceLevel: interview.experienceLevel,
-    });
+    })) as unknown as Record<string, unknown>;
 
-    // Supports camelCase and snake_case responses.
-    function readNumber(
-      camelCase: string,
-      snakeCase: string
-    ): number | undefined {
-      const value =
-        result[camelCase] ?? result[snakeCase];
+    // Validate Gemini's response.
+    const isCorrect = result.is_correct;
+    const followUpQuestion = result.follow_up_question;
 
-      if (
-        typeof value !== "number" ||
-        !Number.isFinite(value) ||
-        value < 0 ||
-        value > 100
-      ) {
-        return undefined;
-      }
-
-      return value;
-    }
-
-    function readStringArray(key: string): string[] {
-      const value = result[key];
-
-      return Array.isArray(value)
-        ? value.filter(
-            (item): item is string =>
-              typeof item === "string"
-          )
-        : [];
-    }
-
-    function readString(
-      camelCase: string,
-      snakeCase: string
-    ): string {
-      const value =
-        result[camelCase] ?? result[snakeCase];
-
-      return typeof value === "string" ? value : "";
-    }
-
-    const overallScore = readNumber(
-      "overallScore",
-      "overall_score"
-    );
-
-    if (overallScore === undefined) {
+    if (
+      typeof isCorrect !== "boolean" ||
+      typeof followUpQuestion !== "string" ||
+      !followUpQuestion.trim()
+    ) {
       return res.status(502).json({
-        message: "AI service returned an invalid overall score",
+        message: "AI service returned an invalid evaluation",
       });
     }
 
-    const evaluation = {
-      technicalAccuracy:
-        readNumber("technicalAccuracy", "technical_accuracy") ?? 0,
-      communication:
-        readNumber("communication", "communication") ?? 0,
-      problemSolving:
-        readNumber("problemSolving", "problem_solving") ?? 0,
-      overallScore,
-      strengths: readStringArray("strengths"),
-      weaknesses: readStringArray("weaknesses"),
-      feedback: readString("feedback", "feedback"),
-      followUpQuestion: readString(
-        "followUpQuestion",
-        "follow_up_question"
-      ),
+    const nextQuestionText = followUpQuestion.trim();
+
+    // Save the evaluation against the current question.
+    question.evaluation = {
+      isCorrect,
+      followUpQuestion: nextQuestionText,
     };
 
-    question.evaluation = evaluation;
+    // Prevent duplicate follow-up questions if this request is repeated.
+    const alreadyExists = interview.questions.some(
+      (existingQuestion) => existingQuestion.questionText === nextQuestionText
+    );
+
+    let nextQuestion = null;
+
+    if (!alreadyExists) {
+      interview.questions.push({
+        questionText: nextQuestionText,
+        answer: "",
+        evaluation: null,
+      });
+
+      nextQuestion = interview.questions[interview.questions.length - 1];
+    }
 
     await interview.save();
 
     return res.status(200).json({
       message: "Answer evaluated successfully",
-      evaluation,
+      isCorrect,
+      result: isCorrect ? "Correct" : "Incorrect",
+      followUpQuestion: nextQuestionText,
+      nextQuestion,
     });
   } catch (error) {
     next(error);
@@ -511,57 +455,139 @@ export async function completeInterview(
     const interviewId = getParamId(req.params.id);
 
     if (!interviewId) {
-      return res.status(400).json({
-        message: "Invalid interview ID",
-      });
+      return res.status(400).json({ message: "Invalid interview ID." });
     }
 
     const interview = await Interview.findById(interviewId);
 
     if (!interview) {
-      return res.status(404).json({
-        message: "Interview not found",
+      return res.status(404).json({ message: "Interview not found." });
+    }
+
+    // Return an existing report instead of generating it again.
+    if (interview.status === "completed" && interview.report) {
+      return res.status(200).json({
+        message: "Interview report retrieved successfully.",
+        report: interview.report,
+        interview,
       });
     }
 
-    if (isInterviewClosed(interview.status)) {
+    if (interview.status === "cancelled") {
       return res.status(400).json({
-        message: "Interview is already closed",
+        message: "A cancelled interview cannot be completed.",
       });
     }
 
-    const scores = interview.questions
-      .map((question) => question.evaluation?.overallScore)
-      .filter(
-        (score): score is number =>
-          typeof score === "number" &&
-          Number.isFinite(score)
-      );
+    const totalQuestions = interview.questions.length;
 
-    if (scores.length === 0) {
-      return res.status(400).json({
-        message:
-          "Evaluate at least one answer before completing the interview",
-      });
-    }
-
-    // Average of evaluated answers only.
-    const totalScore = scores.reduce(
-      (sum, score) => sum + score,
-      0
+    const answeredQuestions = interview.questions.filter(
+      (question) => question.answer.trim().length > 0
     );
 
-    const averageScore = totalScore / scores.length;
+    const evaluatedQuestions = answeredQuestions.filter(
+      (question) => question.evaluation !== null
+    );
 
-    interview.overallScore = Math.round(averageScore);
+    // Nothing to analyse, so don't call the AI service.
+    if (evaluatedQuestions.length === 0) {
+      return res.status(400).json({
+        message: "Evaluate at least one answer before completing the interview.",
+      });
+    }
+
+    const correctAnswers = evaluatedQuestions.filter(
+      (question) => question.evaluation?.isCorrect === true
+    ).length;
+
+    const incorrectAnswers = evaluatedQuestions.filter(
+      (question) => question.evaluation?.isCorrect === false
+    ).length;
+
+    const unansweredQuestions = totalQuestions - answeredQuestions.length;
+
+    const accuracy = Number(
+      ((correctAnswers / evaluatedQuestions.length) * 100).toFixed(2)
+    );
+
+    // Prepare questions for the Python AI service.
+    const questionsForAI = evaluatedQuestions.map((question) => ({
+      question_id: question._id.toString(),
+      question_text: question.questionText,
+      answer: question.answer,
+      evaluation: {
+        is_correct: question.evaluation!.isCorrect,
+      },
+    }));
+
+    // Generate qualitative analysis using Gemini.
+    const aiReport = (await generateInterviewReport({
+      role: interview.role,
+      experienceLevel: interview.experienceLevel,
+      interviewType: interview.interviewType,
+      questions: questionsForAI,
+    })) as unknown as Record<string, any>;
+
+    const strengths = aiReport.strengths;
+    const weaknesses = aiReport.weaknesses;
+    const feedback = aiReport.question_feedback;
+
+    if (
+      !Array.isArray(strengths) ||
+      !Array.isArray(weaknesses) ||
+      !Array.isArray(feedback)
+    ) {
+      return res.status(502).json({
+        message: "AI service returned an invalid report.",
+      });
+    }
+
+    // Match AI feedback with the corresponding MongoDB question.
+    const feedbackById = new Map<string, string>(
+      feedback.map((item: any) => [
+        String(item.question_id),
+        String(item.explanation),
+      ])
+    );
+
+    const questionFeedback = evaluatedQuestions.map((question) => {
+      const questionId = question._id.toString();
+      const explanation = feedbackById.get(questionId);
+
+      if (!explanation) {
+        throw new Error(`Missing AI feedback for question ${questionId}.`);
+      }
+
+      return {
+        questionId,
+        questionText: question.questionText,
+        answer: question.answer,
+        isCorrect: question.evaluation!.isCorrect,
+        explanation,
+      };
+    });
+
+    // Save the final report in MongoDB.
+    interview.set("report", {
+      totalQuestions,
+      answeredQuestions: answeredQuestions.length,
+      correctAnswers,
+      incorrectAnswers,
+      unansweredQuestions,
+      accuracy,
+      strengths: strengths.map(String),
+      weaknesses: weaknesses.map(String),
+      questionFeedback,
+      generatedAt: new Date(),
+    });
+
     interview.status = "completed";
 
     await interview.save();
 
     return res.status(200).json({
-      message: "Interview completed successfully",
-      overallScore: interview.overallScore,
-      evaluatedAnswers: scores.length,
+      message: "Interview completed successfully.",
+      report: interview.report,
       interview,
     });
   } catch (error) {

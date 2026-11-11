@@ -3,41 +3,14 @@ import { Schema, model, type InferSchemaType } from "mongoose";
 
 const answerEvaluationSchema = new Schema(
   {
-    technicalAccuracy: {
-      type: Number,
-      min: 0,
-      max: 100,
-    },
-    communication: {
-      type: Number,
-      min: 0,
-      max: 100,
-    },
-    problemSolving: {
-      type: Number,
-      min: 0,
-      max: 100,
-    },
-    overallScore: {
-      type: Number,
-      min: 0,
-      max: 100,
-    },
-    strengths: {
-      type: [String],
-      default: [],
-    },
-    weaknesses: {
-      type: [String],
-      default: [],
-    },
-    feedback: {
-      type: String,
-      default: "",
+    isCorrect: {
+      type: Boolean,
+      required: true,
     },
     followUpQuestion: {
       type: String,
-      default: "",
+      required: true,
+      trim: true,
     },
   },
   { _id: false }
@@ -59,6 +32,86 @@ const questionSchema = new Schema(
     },
   },
   { timestamps: true }
+);
+
+// AI-generated explanation for each evaluated answer
+const questionFeedbackSchema = new Schema(
+  {
+    questionId: {
+      type: String,
+      required: true,
+    },
+    questionText: {
+      type: String,
+      required: true,
+    },
+    answer: {
+      type: String,
+      required: true,
+    },
+    isCorrect: {
+      type: Boolean,
+      required: true,
+    },
+    explanation: {
+      type: String,
+      required: true,
+    },
+  },
+  { _id: false }
+);
+
+// Final interview report
+const reportSchema = new Schema(
+  {
+    totalQuestions: {
+      type: Number,
+      required: true,
+      default: 0,
+    },
+    answeredQuestions: {
+      type: Number,
+      required: true,
+      default: 0,
+    },
+    correctAnswers: {
+      type: Number,
+      required: true,
+      default: 0,
+    },
+    incorrectAnswers: {
+      type: Number,
+      required: true,
+      default: 0,
+    },
+    unansweredQuestions: {
+      type: Number,
+      required: true,
+      default: 0,
+    },
+    accuracy: {
+      type: Number,
+      required: true,
+      default: 0,
+    },
+    strengths: {
+      type: [String],
+      default: [],
+    },
+    weaknesses: {
+      type: [String],
+      default: [],
+    },
+    questionFeedback: {
+      type: [questionFeedbackSchema],
+      default: [],
+    },
+    generatedAt: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  { _id: false }
 );
 
 const interviewSchema = new Schema(
@@ -101,16 +154,12 @@ const interviewSchema = new Schema(
       type: [questionSchema],
       default: [],
     },
-    overallScore: {
-      type: Number,
-      min: 0,
-      max: 100,
+    report: {
+      type: reportSchema,
       default: null,
     },
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
 
 export type InterviewDocument = InferSchemaType<typeof interviewSchema>;

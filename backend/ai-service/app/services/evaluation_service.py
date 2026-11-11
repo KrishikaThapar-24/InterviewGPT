@@ -1,58 +1,82 @@
 
 import json
+import re
 
-from app.services.gemini_service import generate_response
 from app.models.evaluation import AnswerEvaluation
+from app.services.gemini_service import generate_response
 
 
 def evaluate_answer(
     question: str,
     answer: str,
     role: str,
-    experience_level: str
+    experience_level: str,
 ) -> AnswerEvaluation:
 
     prompt = f"""
-    You are a strict but fair technical interviewer.
+You are an experienced and fair technical interviewer.
 
-    Evaluate the candidate's answer.
+Evaluate the candidate's answer.
 
-    Candidate Role: {role}
-    Experience Level: {experience_level}
+Candidate role: {role}
+Experience level: {experience_level}
 
-    Interview Question:
-    {question}
+Interview question:
+{question}
 
-    Candidate Answer:
-    {answer}
+Candidate answer:
+{answer}
 
-    Evaluate the response on:
+Instructions:
+1. Decide whether the answer is technically correct.
+2. Set is_correct to true if the answer is substantially correct.
+3. Set is_correct to false if the answer is incorrect, misleading,
+   or does not answer the question.
+4. Do not require exact wording.
+5. Accept different explanations that communicate the correct concept.
+6. Generate exactly one relevant follow-up interview question.
+7. If the answer is correct, ask a deeper question about the same concept.
+8. If the answer is incorrect, ask a simpler clarifying question.
+9. Do not provide scores, feedback, strengths, or weaknesses.
 
-    1. Technical accuracy (0-10)
-    2. Conceptual understanding (0-10)
-    3. Answer relevance (0-10)
+Return exactly this JSON structure:
 
-    Identify strengths and weaknesses.
+{{
+    "is_correct": true,
+    "follow_up_question": "Your follow-up question here"
+}}
+"""
 
-    Provide constructive feedback.
+    response = generate_response(
+        prompt,
+        response_mime_type="application/json",
+    )
 
-    Generate one relevant follow-up question.
+    # Remove Markdown code fences if the model includes them.
+    cleaned_response = re.sub(
+        r"^```(?:json)?\s*|\s*```$",
+        "",
+        response.strip(),
+        flags=re.IGNORECASE,
+    ).strip()
 
-    Return ONLY valid JSON in this format:
+    # Extract the JSON object if extra text is present.
+    start = cleaned_response.find("{")
+    end = cleaned_response.rfind("}")
 
-    {{
-        "technical_accuracy": 8,
-        "conceptual_understanding": 7,
-        "answer_relevance": 9,
-        "strengths": ["Correct explanation"],
-        "weaknesses": ["Missing practical example"],
-        "feedback": "Good explanation...",
-        "follow_up_question": "Can you explain..."
-    }}
-    """
+    if start == -1 or end == -1 or end < start:
+        raise ValueError(
+            "Gemini did not return a valid JSON object. "
+            f"Response received: {cleaned_response[:300]!r}"
+        )
 
-    response = generate_response(prompt)
+    json_text = cleaned_response[start:end + 1]
 
-    result = json.loads(response)
+    try:
+        result = json.loads(json_text)
+    except json.JSONDecodeError as error:
+        raise ValueError(
+            f"Gemini returned malformed JSON: {error}"
+        ) from error
 
     return AnswerEvaluation.model_validate(result)

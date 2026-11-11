@@ -7,6 +7,9 @@ from app.services.gemini_service import generate_response
 from app.models.evaluation import AnswerEvaluation
 from app.services.evaluation_service import evaluate_answer
 
+from app.models.report import ReportRequest, InterviewReportAnalysis
+from app.services.report_service import generate_interview_report
+
 app = FastAPI(
     title="InterviewGPT API",
     version="1.0.0"
@@ -84,3 +87,21 @@ def evaluate_candidate_answer(request: EvaluationRequest):
             status_code=500,
             detail="Answer evaluation failed."
         )
+@app.post(
+    "/generate-report",
+    response_model=InterviewReportAnalysis,
+)
+def generate_report_endpoint(request: ReportRequest):
+    try:
+        return generate_interview_report(
+            role=request.role,
+            experience_level=request.experience_level,
+            interview_type=request.interview_type,
+            questions=request.questions,
+        )
+    except Exception as error:
+        print("REPORT GENERATION ERROR:", repr(error))
+        raise HTTPException(
+            status_code=500,
+            detail="Interview report generation failed.",
+        ) from error

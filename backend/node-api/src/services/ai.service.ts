@@ -58,3 +58,33 @@ export async function evaluateAnswer(
 
   return response.data as Record<string, unknown>;
 }
+export interface GenerateInterviewReportInput {
+  role: string;
+  experienceLevel: string;
+  interviewType: string;
+  questions: {
+    question_id: string;
+    question_text: string;
+    answer: string;
+    evaluation: {
+      is_correct: boolean;
+    } | null;
+  }[];
+}
+
+export async function generateInterviewReport(
+  input: GenerateInterviewReportInput
+): Promise<Record<string, unknown>> {
+  const response = await axios.post(
+    `${AI_SERVICE_URL}/generate-report`,
+    {
+      role: input.role,
+      experience_level: input.experienceLevel,
+      interview_type: input.interviewType,
+      questions: input.questions,
+    },
+    { timeout: 120000 }
+  );
+
+  return response.data as Record<string, unknown>;
+}
