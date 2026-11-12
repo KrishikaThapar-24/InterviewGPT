@@ -1,5 +1,6 @@
 
 import axios from "axios";
+import FormData from "form-data";
 
 const AI_SERVICE_URL =
   process.env.AI_SERVICE_URL || "http://127.0.0.1:8000";
@@ -84,6 +85,37 @@ export async function generateInterviewReport(
       questions: input.questions,
     },
     { timeout: 120000 }
+  );
+
+  return response.data as Record<string, unknown>;
+}
+
+// Input required to analyze an uploaded resume.
+export interface AnalyzeResumeInput {
+  buffer: Buffer;
+  originalName: string;
+  mimeType: string;
+}
+
+// Forward the resume to the Python AI service.
+export async function analyzeResume(
+  input: AnalyzeResumeInput
+): Promise<Record<string, unknown>> {
+  const form = new FormData();
+
+  form.append("resume", input.buffer, {
+    filename: input.originalName,
+    contentType: input.mimeType,
+  });
+
+  const response = await axios.post(
+    `${AI_SERVICE_URL}/resume/analyze`,
+    form,
+    {
+      headers: form.getHeaders(),
+      timeout: 120000,
+      maxBodyLength: 10 * 1024 * 1024,
+    }
   );
 
   return response.data as Record<string, unknown>;
