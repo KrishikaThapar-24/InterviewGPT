@@ -37,7 +37,20 @@ function getParamId(value: string | string[] | undefined): string | null {
 function isInterviewClosed(status: string): boolean {
   return status === "completed" || status === "cancelled";
 }
+// Find an interview only if it belongs to the logged-in user.
+async function findOwnedInterview(
+  req: Request,
+  interviewId: string
+) {
+  if (!req.userId) {
+    return null;
+  }
 
+  return Interview.findOne({
+    _id: interviewId,
+    candidateId: req.userId,
+  });
+}
 // --------------------------------------------------
 // 1. CREATE INTERVIEW
 // POST /api/interviews
@@ -61,7 +74,7 @@ export async function createInterview(
     const interview = await Interview.create({
       role: parsed.data.role,
       company: parsed.data.company,
-      candidateId: parsed.data.candidateId ?? null,
+      candidateId: req.userId!,
       experienceLevel: parsed.data.experienceLevel,
       interviewType: parsed.data.interviewType,
       difficulty: parsed.data.difficulty,
@@ -83,20 +96,22 @@ export async function createInterview(
 // GET /api/interviews
 // --------------------------------------------------
 
+
 export async function getInterviews(
   req: Request,
   res: Response,
   next: NextFunction
 ) {
   try {
-    const candidateId =
-      typeof req.query.candidateId === "string"
-        ? req.query.candidateId
-        : undefined;
+    if (!req.userId) {
+      return res.status(401).json({
+        message: "Authentication required.",
+      });
+    }
 
-    const filter = candidateId ? { candidateId } : {};
-
-    const interviews = await Interview.find(filter)
+    const interviews = await Interview.find({
+      candidateId: req.userId,
+    })
       .sort({ createdAt: -1 })
       .limit(100);
 
@@ -108,6 +123,7 @@ export async function getInterviews(
     next(error);
   }
 }
+
 
 // --------------------------------------------------
 // 3. GET INTERVIEW BY ID
@@ -126,7 +142,7 @@ export async function getInterviewById(
       return res.status(400).json({ message: "Invalid interview ID" });
     }
 
-    const interview = await Interview.findById(interviewId);
+    const interview = await findOwnedInterview(req, interviewId);
 
     if (!interview) {
       return res.status(404).json({ message: "Interview not found" });
@@ -164,7 +180,7 @@ export async function updateInterviewStatus(
       });
     }
 
-    const interview = await Interview.findById(interviewId);
+    const interview = await findOwnedInterview(req, interviewId);
 
     if (!interview) {
       return res.status(404).json({ message: "Interview not found" });
@@ -223,7 +239,7 @@ export async function generateInterviewQuestion(
       });
     }
 
-    const interview = await Interview.findById(interviewId);
+    const interview = await findOwnedInterview(req, interviewId);
 
     if (!interview) {
       return res.status(404).json({ message: "Interview not found" });
@@ -301,7 +317,7 @@ export async function saveInterviewAnswer(
       });
     }
 
-    const interview = await Interview.findById(interviewId);
+    const interview = await findOwnedInterview(req, interviewId);
 
     if (!interview) {
       return res.status(404).json({ message: "Interview not found" });
@@ -356,8 +372,7 @@ export async function evaluateInterviewAnswer(
       });
     }
 
-    const interview = await Interview.findById(interviewId);
-
+    const interview = await findOwnedInterview(req, interviewId);
     if (!interview) {
       return res.status(404).json({ message: "Interview not found" });
     }
@@ -458,7 +473,7 @@ export async function completeInterview(
       return res.status(400).json({ message: "Invalid interview ID." });
     }
 
-    const interview = await Interview.findById(interviewId);
+    const interview = await findOwnedInterview(req, interviewId);
 
     if (!interview) {
       return res.status(404).json({ message: "Interview not found." });
