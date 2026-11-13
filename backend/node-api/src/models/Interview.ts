@@ -30,6 +30,17 @@ const questionSchema = new Schema(
       type: answerEvaluationSchema,
       default: null,
     },
+    category: {
+      type: String,
+      enum: ["Project", "Technical", "Conceptual", "Experience", "Behavioral"],
+    },
+    difficulty: {
+      type: String,
+      enum: ["Easy", "Medium", "Hard"],
+    },
+    relatedProject: { type: String, default: "" },
+    topic: { type: String, default: "" },
+    expectedConcepts: { type: [String], default: [] },
   },
   { timestamps: true }
 );
@@ -119,6 +130,12 @@ const interviewSchema = new Schema(
     candidateId: {
       type: String,
       default: null,
+    },
+    interviewMode: {
+      type: String,
+      enum: ["standard", "resume-based"],
+      default: "standard",
+      index: true,
     },
     role: {
       type: String,
