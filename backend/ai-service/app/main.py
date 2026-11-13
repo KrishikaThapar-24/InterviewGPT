@@ -1,7 +1,6 @@
 from fastapi import FastAPI, HTTPException, UploadFile, File
 
 from app.services.resume_service import extract_resume_text
-from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from app.services.gemini_service import generate_response
