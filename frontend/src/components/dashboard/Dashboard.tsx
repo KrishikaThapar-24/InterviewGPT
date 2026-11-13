@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { getToken,clearSession, getUser } from "@/lib/auth";
@@ -21,6 +21,9 @@ import {
   TrendingUp,
   UserRound,
   XCircle,
+  LogOut,
+  ChevronDown,
+  UserCircle,
 } from "lucide-react";
 
 
@@ -54,7 +57,7 @@ interface InterviewApiResponse {
 const navigation = [
   { label: "Dashboard", icon: LayoutDashboard, active: true, href: "/" },
   { label: "Interview", icon: Mic, active: false, href: "/interview" },
-  { label: "Resume", icon: FileText, active: false, href: "/resume" },
+  { label: "Resume Interview", icon: Mic, active: false, href: "/resume" },
   {
     label: "Performance",
     icon: ChartNoAxesCombined,
@@ -140,24 +143,48 @@ function Sidebar() {
 }
 
 function Header() {
+  const router = useRouter();
+  const user = getUser();
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function closeOnOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) setOpen(false);
+    }
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", closeOnOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
+
+  function logout() {
+    clearSession();
+    router.replace("/login");
+  }
+
   return (
     <header className="topbar">
-      <div className="breadcrumb">
-        Workspace <ChevronRight size={14} /> <span>Dashboard</span>
-      </div>
-
+      <div className="breadcrumb">Workspace <ChevronRight size={14} /> <span>Dashboard</span></div>
       <div className="topbar-actions">
-        <button className="icon-button" aria-label="Notifications">
-          <Bell size={19} />
-          <span className="notification-dot" />
-        </button>
-
+        <button className="icon-button" aria-label="Notifications" type="button"><Bell size={19} /><span className="notification-dot" /></button>
         <div className="topbar-divider" />
-
-        <div className="user-menu">
-          <div className="avatar small">U</div>
-          <span>User</span>
-          <ChevronRight size={15} className="muted-icon" />
+        <div className="profile-menu-wrap" ref={menuRef}>
+          <button type="button" className="user-menu" aria-expanded={open} onClick={() => setOpen(value => !value)}>
+            <div className="avatar small">{user?.name?.charAt(0).toUpperCase() || "U"}</div>
+            <span>{user?.name || "User"}</span>
+            <ChevronDown size={15} className="muted-icon" />
+          </button>
+          {open && <div className="profile-dropdown">
+            <div className="profile-dropdown-user"><UserCircle size={20}/><div><strong>{user?.name || "Your account"}</strong><small>{user?.email || "Signed in"}</small></div></div>
+            <button type="button" onClick={() => { setOpen(false); router.push("/history"); }}>Interview history</button>
+            <button type="button" className="danger" onClick={logout}><LogOut size={16}/> Log out</button>
+          </div>}
         </div>
       </div>
     </header>
@@ -245,7 +272,7 @@ function FeatureCards() {
       description: "Get insights to improve your resume.",
       icon: FileText,
       color: "blue",
-      href: "/resume",
+      href: "/resume-analysis",
     },
     {
       title: "Track Performance",
